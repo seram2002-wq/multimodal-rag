@@ -1,0 +1,28 @@
+# 가상환경
+/.venv
+/.venv311
+
+# 환경변수 (API 키 노출 방지)
+.env
+
+# 원본 PDF (저장소에는 올리지 않음, README에 출처 링크)
+data/*
+!data/.gitkeep
+*.pdf
+
+# 추출 이미지 (용량 폭증 방지)
+figures/*
+!figures/.gitkeep
+
+# 벡터 DB
+chroma_db/
+
+# 파이썬
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# 에디터
+.vscode/
+.idea/
+.DS_Store
