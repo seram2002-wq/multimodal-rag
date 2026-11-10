@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import pickle
+import re
 from pathlib import Path
 
+from langchain_text_splitters import CharacterTextSplitter
 from unstructured.partition.pdf import partition_pdf
 
 
@@ -37,17 +39,33 @@ def categorize_elements(raw_pdf_elements) -> tuple[list[dict], list[dict]]:
 
     수업 코드는 str(element)만 담았지만, 여기서는 근거 표시용 페이지 번호와
     표의 HTML(text_as_html)을 함께 담습니다.
+    hi_res 가 표가 아닌 것을 표로 잡은 블록(is_valid_table 참고)은 제외합니다.
     """
     texts: list[dict] = []
     tables: list[dict] = []
     for element in raw_pdf_elements:
         page = element.metadata.page_number
         if "unstructured.documents.elements.Table" in str(type(element)):
-            html = getattr(element.metadata, "text_as_html", None)
-            tables.append({"kind": "table", "content": html or str(element), "page": page})
+            html = getattr(element.metadata, "text_as_html", None) or str(element)
+            if is_valid_table(html):
+                tables.append({"kind": "table", "content": html, "page": page})
         elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
             texts.append({"kind": "text", "content": str(element), "page": page})
     return texts, tables
+
+
+def is_valid_table(html: str, min_rows: int = 3, max_empty_ratio: float = 0.5) -> bool:
+    """hi_res 가 그림이나 머리글을 표로 잘못 인식한 경우를 걸러냅니다.
+
+    - 행이 min_rows 개 미만이면 표가 아님 (예: 저자 이메일 한 줄)
+    - 빈 칸 비율이 max_empty_ratio 를 넘으면 표가 아님 (예: 벡터장 그림을 표로 읽은 경우)
+    """
+    rows = html.count("<tr")
+    cells = re.findall(r"<td[^>]*?(?:/>|>(.*?)</td>)", html, flags=re.S)
+    if rows < min_rows or not cells:
+        return False
+    empty = sum(1 for c in cells if not c.strip())
+    return empty / len(cells) <= max_empty_ratio
 
 
 def list_figures(figures_dir: str | Path) -> list[dict]:
@@ -58,6 +76,15 @@ def list_figures(figures_dir: str | Path) -> list[dict]:
         items.append({"kind": "image", "content": str(path), "page": int(page),
                       "number": int(number), "image_path": str(path)})
     return sorted(items, key=lambda x: (x["page"], x["number"]))
+
+
+def split_texts(texts: list[dict], chunk_size: int = 2000, chunk_overlap: int = 200) -> list[str]:
+    """텍스트를 토큰 기준으로 다시 자릅니다. (수업 01 [8], Before 텍스트 RAG에 사용)"""
+    splitter = CharacterTextSplitter.from_tiktoken_encoder(
+        chunk_size=chunk_size,       # 각 텍스트 블록의 최대 크기 (토큰)
+        chunk_overlap=chunk_overlap, # 경계에서 문맥이 잘리지 않도록 겹치는 크기
+    )
+    return splitter.split_text(" ".join(t["content"] for t in texts))
 
 
 def save_pickle(obj, path: str | Path) -> None:

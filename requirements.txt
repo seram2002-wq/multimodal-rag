@@ -1,9 +1,12 @@
 langchain>=1.0
-langchain-classic>=1.0  # MultiVectorRetriever. langchain 1.x에서 분리됨 (필수)
+langchain-classic>=1.0  # MultiVectorRetriever (split out in langchain 1.x)
 langchain-openai
 langchain-chroma
 chromadb
+langchain-text-splitters
+tiktoken
 unstructured[all-docs]
+unstructured[pdf]  # hi_res layout model (unstructured-inference)
 pillow
 python-dotenv
 ipykernel
