@@ -1,23 +1,20 @@
 # 가상환경
-/.venv
-/.venv311
+/.venv/
+/.venv311/
 
 # 환경변수 (API 키 노출 방지)
 .env
 
-# 원본 PDF (저장소에는 올리지 않음, README에 출처 링크)
+# data/ 는 원본 PDF만 올림
+# (figures/: 추출 이미지, processed/: 추출·요약 결과 pickle)
 data/*
-!data/.gitkeep
-*.pdf
-
-# 추출 이미지 (용량 폭증 방지)
-figures/*
-!figures/.gitkeep
+!data/invest.pdf
 
 # 벡터 DB
 chroma_db/
 
-# 파이썬
+# 파이썬 (src/__init__.py 는 로컬에서만 사용)
+src/__init__.py
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
