@@ -2,6 +2,9 @@
 
 FashionRAG 수업의 LCEL(프롬프트 | 모델 | 파서) 구조와
 base64 data URL 로 이미지를 비전 모델에 보내는 방법을 그대로 사용합니다.
+
+단독 실행 (프로젝트 루트에서):
+    python -m src.summarize    # 요약 후 data/processed/summaries.pkl 저장
 """
 from __future__ import annotations
 
@@ -14,8 +17,12 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from src.extract import PROCESSED_DIR, load_or_extract, load_pickle, save_pickle
+
+SUMMARY_PKL = PROCESSED_DIR / "summaries.pkl"
+
 # 논문 원문이 영어이므로 요약도 영어로 만듭니다.
-# (질문은 노트북의 번역 체인으로 영어로 바꿔 검색합니다)
+# (질문은 src/retriever.py 의 번역 체인으로 영어로 바꿔 검색합니다)
 # 요약이 검색 색인이 되므로, 수치·설정값이 빠지면 그 내용은 검색되지 않습니다.
 # 그래서 길이보다 '세부 정보 보존'을 우선하도록 지시합니다.
 TEXT_PROMPT = (
@@ -92,3 +99,44 @@ def summarize_images(items: list[dict], contexts: list[str] | None = None, *,
                "image_data": encode_image(it["image_path"]),
                "context": ctx[:3000]} for it, ctx in zip(items, contexts)]
     return [str(s) for s in chain.batch(inputs, {"max_concurrency": 5})]
+
+
+def summarize_all(texts: list[dict], tables: list[dict], images: list[dict], *,
+                  model: str | None = None) -> dict:
+    """텍스트·표·그림을 모두 요약합니다. 그림에는 같은 페이지의 본문(캡션 포함)을 함께 전달합니다."""
+    image_contexts = ["\n\n".join(t["content"] for t in texts if t["page"] == img["page"])
+                      for img in images]
+    return {
+        "texts": summarize_elements(texts, model=model),
+        "tables": summarize_elements(tables, model=model),
+        "images": summarize_images(images, image_contexts, model=model),
+    }
+
+
+def load_or_summarize(data: dict, rebuild: bool = False, *, model: str | None = None,
+                      pkl_path: str | Path = SUMMARY_PKL) -> dict:
+    """저장본이 있으면 불러오고, 없거나 rebuild=True 이면 요약 후 저장합니다.
+
+    추출을 다시 해서 텍스트·표·그림 개수가 저장된 요약과 달라졌으면 요약도 다시 만듭니다.
+    """
+    if Path(pkl_path).exists() and not rebuild:
+        summaries = load_pickle(pkl_path)
+        if all(len(summaries[k]) == len(data[k]) for k in ("texts", "tables", "images")):
+            return summaries
+        print("추출 결과와 요약 개수가 달라 요약을 다시 만듭니다.")
+    summaries = summarize_all(data["texts"], data["tables"], data["images"], model=model)
+    save_pickle(summaries, pkl_path)
+    return summaries
+
+
+if __name__ == "__main__":
+    import time
+
+    data = load_or_extract()
+    start = time.time()
+    summaries = load_or_summarize(data, rebuild=True)
+    print(f"요약 완료 — {time.time() - start:.1f}초 소요 → {SUMMARY_PKL}")
+    print(f"텍스트 요약 {len(summaries['texts'])}개 / 표 요약 {len(summaries['tables'])}개 / "
+          f"그림 요약 {len(summaries['images'])}개")
+    for t, s in zip(data["tables"], summaries["tables"]):
+        print(f"\n[표 요약 p.{t['page']}]\n{s}")

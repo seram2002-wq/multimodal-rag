@@ -28,7 +28,7 @@ flowchart TB
         SI["그림 요약<br/>base64 이미지 → gpt-4o-mini 비전"]
     end
 
-    subgraph S3["3단계 · 검색과 생성 (src/retriever.py + 노트북 Part 5·6)"]
+    subgraph S3["3단계 · 검색과 생성 (src/retriever.py)"]
         Q["한국어 질문"] --> TR1["번역 체인 → 영어"]
         TR1 --> VS[("Chroma<br/>요약 + 텍스트·표 원문 임베딩")]
         VS -- "doc_id" --> DS[("InMemoryStore<br/>원본: 텍스트·표 HTML·그림 base64")]
@@ -56,7 +56,7 @@ flowchart TB
 | --- | --- | --- |
 | 파서 | Unstructured `partition_pdf`, `strategy="hi_res"` | `fast`는 텍스트만 추출합니다. 표 구조(`infer_table_structure`)와 그림 추출(`extract_images_in_pdf`)은 레이아웃 모델을 쓰는 `hi_res`에서만 됩니다. |
 | 청크 | `by_title`, 4000 / 3800 / 2000자 | 논문은 섹션 제목 단위로 내용이 나뉘어 있어 제목 기준이 의미를 보존합니다. 블록이 요약 단위가 되므로 섹션 하나가 통째로 들어가도록 크게 잡았습니다 (수업 01 설정). |
-| 요약·생성 모델 | `gpt-4o` | 텍스트와 이미지 입력을 모두 지원해 요약·비전·답변·번역을 한 모델로 처리하고, 블록·그림 수십 개를 요약해도 비용이 낮습니다. |
+| 요약·생성 모델 | `gpt-4o-mini` | 텍스트와 이미지 입력을 모두 지원해 요약·비전·답변·번역을 한 모델로 처리하고, 블록·그림 수십 개를 요약해도 비용이 낮습니다. |
 | 임베딩 | `text-embedding-3-small` | 텍스트 요약을 검색하므로 텍스트 임베딩으로 충분합니다. |
 | 그림 검색 방식 | CLIP 대신 **그림 요약 + 텍스트 임베딩** | FashionRAG처럼 CLIP으로 그림을 직접 검색할 수도 있지만, CLIP은 일반 사진–캡션으로 학습돼 그래프·샘플 격자처럼 논문 그림의 의미("저밀도 영역에서 score가 부정확")를 잘 잡지 못합니다. 그림을 문장으로 요약하면 텍스트·표와 같은 검색기 하나로 다룰 수 있습니다. |
 | 프롬프트 언어 | 요약·답변 프롬프트는 **영어**, 질문·답변은 **번역 체인**으로 한↔영 | 논문 원문이 영어라 영어 요약이 원문 용어(score matching, Langevin dynamics 등)를 그대로 유지합니다. 한국어 질문은 FashionRAG처럼 번역 체인으로 영어로 바꿔 검색하고, 답변은 다시 한국어로 번역합니다. |
@@ -81,12 +81,13 @@ flowchart TB
 | 검색 | `src/retriever.py` | rag-parser: 원문을 잘게 나눈 조각으로 검색 | 원본 하나에 **요약 벡터 + 원문 벡터**를 같은 `doc_id`로 연결 | 의미 검색은 요약으로, 요약에서 빠진 세부 수치는 원문으로 걸리게 하기 위해 |
 | 검색 | `src/retriever.py`, 노트북 `[3]` | rag-parser: 기본값 | 검색 개수 k=6 | 원본 하나에 벡터가 2개라 같은 원본이 중복으로 걸리는데, 중복을 합친 뒤에도 근거를 충분히 확보하기 위해 |
 | 검색 | `src/retriever.py` | FashionRAG: `PersistentClient`(디스크 저장) | 메모리 Chroma + 실행마다 다른 컬렉션 이름 | 셀을 다시 실행할 때 같은 요약이 중복 저장되지 않게 |
-| 생성 | 노트북 `[11]` | FashionRAG: 이미지 2장 고정 프롬프트 | `MessagesPlaceholder`로 검색된 그림 수만큼(0장 이상) 전달 | 질문마다 검색되는 그림 수가 달라서 |
-| 생성 | 노트북 `[11]` `format_prompt_inputs` | FashionRAG: 이미지만 전달 | 그림과 함께 그림 요약(캡션 정보 포함)도 텍스트로 전달 | 비전 모델이 그림 속 표시의 의미를 캡션 기준으로 설명할 수 있도록 |
-| 생성 | 노트북 `[11]` 시스템 프롬프트 | 없음 | "PDF 추출 과정에서 σ가 o나 0으로 깨질 수 있다"는 안내 추가 | 실제로 `σ1 = 1`이 `0, = 1`로 OCR돼 모델이 근거를 알아보지 못했기 때문 |
-| 생성 | 노트북 `[11]` `sources` | 없음 | 근거 원본의 종류와 페이지 출력 (예: `table p.7, image p.4`) | 과제의 "근거가 된 원본 종류"를 표시하기 위해 |
-| 저장 | 노트북 `[7]` | 노트북 01: 추출 결과만 pickle 저장 | 요약 결과도 pickle 저장 | 다시 실행할 때 API 비용과 시간을 아끼기 위해 |
+| 생성 | `src/retriever.py` `create_rag_chain` | FashionRAG: 이미지 2장 고정 프롬프트 | `MessagesPlaceholder`로 검색된 그림 수만큼(0장 이상) 전달 | 질문마다 검색되는 그림 수가 달라서 |
+| 생성 | `src/retriever.py` `format_prompt_inputs` | FashionRAG: 이미지만 전달 | 그림과 함께 그림 요약(캡션 정보 포함)도 텍스트로 전달 | 비전 모델이 그림 속 표시의 의미를 캡션 기준으로 설명할 수 있도록 |
+| 생성 | `src/retriever.py` 시스템 프롬프트 | 없음 | "PDF 추출 과정에서 σ가 o나 0으로 깨질 수 있다"는 안내 추가 | 실제로 `σ1 = 1`이 `0, = 1`로 OCR돼 모델이 근거를 알아보지 못했기 때문 |
+| 생성 | `src/retriever.py` `sources` | 없음 | 근거 원본의 종류와 페이지 출력 (예: `table p.7, image p.4`) | 과제의 "근거가 된 원본 종류"를 표시하기 위해 |
+| 저장 | `src/extract.py`, `src/summarize.py` `load_or_*` | 노트북 01: 추출 결과만 pickle 저장 | 요약 결과도 pickle 저장 | 다시 실행할 때 API 비용과 시간을 아끼기 위해 |
 | 환경 | 노트북 `[1]` `find_project_root` | 노트북 위치를 가정 | `src/extract.py`가 있는 폴더를 찾아 이동 | 실행 위치(VS Code, Jupyter)에 따라 `ModuleNotFoundError: src`가 났기 때문 |
+| 구조 | `src/*.py` 의 `__main__` | 실습 코드는 노트북 안에 작성 | 추출·요약·검색·체인을 모두 `src/`에 두고, 노트북은 불러와 실행·출력만 함. 각 파일을 `python -m src.<파일>`로 단독 실행 가능 | 노트북 없이도 같은 결과를 재현할 수 있게 하고, 코드가 노트북과 `src/`에 중복되지 않게 하기 위해 |
 | 환경 | `requirements.txt` | `unstructured[all-docs]` | `unstructured[pdf]` 추가, 주석은 영어로만 | `[all-docs]`만으로는 hi_res 레이아웃 모델(`unstructured_inference`)이 설치되지 않았고, 한글 주석 때문에 Windows pip가 파일을 못 읽었기 때문 |
 
 ## 5. 실행 방법
@@ -101,6 +102,16 @@ copy .env.example .env   # .env에 OPENAI_API_KEY 입력
 1. Poppler와 Tesseract를 설치하고 PATH에 추가합니다 (`hi_res` 파싱에 필요).
 2. 분석 PDF는 `data/invest.pdf`로 저장소에 포함돼 있습니다 (출처: 위 arXiv 링크).
 3. `notebooks/Multi_modal_RAG.ipynb`를 위에서부터 실행합니다.
+4. 노트북 없이 `src/`만으로도 실행할 수 있습니다 (프로젝트 루트에서).
+
+   ```powershell
+   python -m src.extract              # 1단계 추출 → data/processed/extracted.pkl
+   python -m src.summarize            # 2단계 요약 → data/processed/summaries.pkl
+   python -m src.retriever            # 3단계 검색·답변: 질의응답 5건 출력
+   python -m src.retriever --before   # + Before(텍스트 RAG) 비교 출력
+   ```
+
+   `src.retriever`는 저장본이 없으면 추출·요약부터 자동으로 실행합니다.
 
 ```text
 multimodal-rag/
@@ -120,7 +131,7 @@ multimodal-rag/
 └── src/
     ├── extract.py              # PDF 파싱 함수
     ├── summarize.py            # 요약 체인
-    └── retriever.py            # 다중 벡터 검색기
+    └── retriever.py            # 다중 벡터 검색기 + 번역·RAG 체인
 ```
 
 노트북을 실행하면 추출·요약 결과가 `data/processed/`에 pickle로 저장됩니다 (Git 제외).

@@ -2,15 +2,27 @@
 
 수업 노트북 '01 데이터 추출 및 분할'의 함수를 그대로 따르고,
 답변 근거를 표시할 수 있도록 페이지 번호와 표 HTML만 함께 보관합니다.
+
+단독 실행 (프로젝트 루트에서):
+    python -m src.extract      # 추출 후 data/processed/extracted.pkl 저장
 """
 from __future__ import annotations
 
 import pickle
 import re
+import time
+from collections import Counter
 from pathlib import Path
 
 from langchain_text_splitters import CharacterTextSplitter
 from unstructured.partition.pdf import partition_pdf
+
+# 경로 설정 (src/ 의 상위 폴더 = 프로젝트 루트)
+PROJECT_ROOT  = Path(__file__).resolve().parents[1]
+PDF_PATH      = PROJECT_ROOT / "data" / "invest.pdf"
+FIGURES_DIR   = PROJECT_ROOT / "data" / "figures"
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+EXTRACTED_PKL = PROCESSED_DIR / "extracted.pkl"
 
 
 def extract_pdf_elements(pdf_path: str | Path, figures_dir: str | Path):
@@ -98,3 +110,34 @@ def save_pickle(obj, path: str | Path) -> None:
 def load_pickle(path: str | Path):
     with open(path, "rb") as f:
         return pickle.load(f)
+
+
+def run_extraction(pdf_path: str | Path = PDF_PATH, figures_dir: str | Path = FIGURES_DIR) -> dict:
+    """추출 → 분류 → 그림 목록까지 한 번에 실행하고 결과 dict 를 돌려줍니다."""
+    raw_pdf_elements = extract_pdf_elements(pdf_path, figures_dir)
+    texts, tables = categorize_elements(raw_pdf_elements)
+    return {
+        "texts": texts,
+        "tables": tables,
+        "images": list_figures(figures_dir),
+        "type_counts": Counter(str(type(el)).split(".")[-1].strip("'>") for el in raw_pdf_elements),
+    }
+
+
+def load_or_extract(rebuild: bool = False, pkl_path: str | Path = EXTRACTED_PKL) -> dict:
+    """저장본이 있으면 불러오고, 없거나 rebuild=True 이면 추출 후 저장합니다."""
+    if Path(pkl_path).exists() and not rebuild:
+        return load_pickle(pkl_path)
+    data = run_extraction()
+    save_pickle(data, pkl_path)
+    return data
+
+
+if __name__ == "__main__":
+    start = time.time()
+    data = load_or_extract(rebuild=True)
+    print(f"추출 완료 — {time.time() - start:.1f}초 소요 → {EXTRACTED_PKL}")
+    print("요소 타입 분포 :", dict(data["type_counts"]))
+    print("텍스트 블록 수 :", len(data["texts"]))
+    print("표 블록 수     :", len(data["tables"]))
+    print("그림 수        :", len(data["images"]))
